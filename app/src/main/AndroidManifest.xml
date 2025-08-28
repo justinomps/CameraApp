@@ -24,6 +24,11 @@
         android:theme="@style/Theme.CameraComposition"
         tools:targetApi="31">
         <activity
+            android:name=".PhotoDetailActivity"
+            android:exported="false"
+            android:parentActivityName=".GalleryActivity"
+            android:theme="@style/Theme.AppCompat.DayNight" />
+        <activity
             android:name=".RollsActivity"
             android:exported="false" />
         <activity

@@ -1,45 +1,38 @@
 package com.example.cameracomposition
 
-import android.net.Uri
+import android.content.Intent
+import android.graphics.BitmapFactory
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
+import com.example.cameracomposition.databinding.ItemPhotoBinding
 import java.io.File
 
 class PhotoAdapter(private val photoFiles: List<File>) :
     RecyclerView.Adapter<PhotoAdapter.PhotoViewHolder>() {
 
-    /**
-     * The ViewHolder holds the views for each individual item in the grid.
-     */
-    class PhotoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val imageView: ImageView = itemView.findViewById(R.id.photo_image_view)
-    }
+    inner class PhotoViewHolder(val binding: ItemPhotoBinding) :
+        RecyclerView.ViewHolder(binding.root)
 
-    /**
-     * This function is called when the RecyclerView needs a new ViewHolder.
-     * It inflates the item_photo.xml layout for each item.
-     */
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_photo, parent, false)
-        return PhotoViewHolder(view)
+        val binding = ItemPhotoBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        return PhotoViewHolder(binding)
     }
 
-    /**
-     * This function is called to display the data at a specific position.
-     * It takes a photo file and sets it as the image for the ImageView.
-     */
     override fun onBindViewHolder(holder: PhotoViewHolder, position: Int) {
         val photoFile = photoFiles[position]
-        holder.imageView.setImageURI(Uri.fromFile(photoFile))
+        val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
+        holder.binding.photoImageView.setImageBitmap(bitmap)
+
+        holder.itemView.setOnClickListener {
+            val context = holder.itemView.context
+            val intent = Intent(context, PhotoDetailActivity::class.java).apply {
+                putExtra("photo_path", photoFile.absolutePath)
+            }
+            context.startActivity(intent)
+        }
     }
 
-    /**
-     * This function returns the total number of items in the list.
-     */
     override fun getItemCount(): Int {
         return photoFiles.size
     }
