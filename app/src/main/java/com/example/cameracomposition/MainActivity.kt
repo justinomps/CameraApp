@@ -1,6 +1,9 @@
 package com.example.cameracomposition
 
 import android.Manifest
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -8,8 +11,12 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.provider.MediaStore
 import android.util.Log
 import android.util.Size
@@ -47,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private var currentMode = ShootingMode.PRACTICE
     private var shotsTaken = 0
     private val rollCapacity = 12
+    private var lastDevelopedRollId: String? = null
 
     private val aspectRatios = OverlayView.AspectRatio.values()
     private var currentRatioIndex = 0
@@ -57,9 +65,8 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "FormatApp"
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
         private const val REQUEST_CODE_PERMISSIONS = 10
-        // This now handles permissions for all Android versions
         private val REQUIRED_PERMISSIONS =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // TIRAMISU is Android 13
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 arrayOf(
                     Manifest.permission.CAMERA,
                     Manifest.permission.READ_MEDIA_IMAGES
@@ -73,6 +80,8 @@ class MainActivity : AppCompatActivity() {
         private const val PREFS_NAME = "FormatAppPrefs"
         private const val KEY_SHOTS_TAKEN = "shotsTaken"
         private const val KEY_SHOOTING_MODE = "shootingMode"
+        private const val KEY_LAST_ROLL_ID = "lastDevelopedRollId"
+        private const val KEY_RATIO_INDEX = "ratioIndex"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,6 +90,10 @@ class MainActivity : AppCompatActivity() {
         setContentView(viewBinding.root)
 
         loadState()
+
+        val savedRatio = aspectRatios[currentRatioIndex]
+        viewBinding.overlayView.setAspectRatio(savedRatio)
+        viewBinding.switchFormatButton.text = savedRatio.displayName
 
         if (allPermissionsGranted()) {
             startCamera()
@@ -94,20 +107,18 @@ class MainActivity : AppCompatActivity() {
         viewBinding.switchFormatButton.setOnClickListener { switchFormat() }
         viewBinding.gridButton.setOnClickListener { switchGrid() }
         viewBinding.developButton.setOnClickListener { developRoll() }
+
         viewBinding.galleryButton.setOnClickListener {
-            val intent = Intent(this, GalleryActivity::class.java)
+            val intent = Intent(this, RollsActivity::class.java)
             startActivity(intent)
         }
+
         viewBinding.modeSwitch.setOnCheckedChangeListener { _, isChecked ->
             val newMode = if (isChecked) ShootingMode.FILM else ShootingMode.PRACTICE
             if (newMode == currentMode) {
                 return@setOnCheckedChangeListener
             }
-
             currentMode = newMode
-            if (shotsTaken > 0) {
-                abandonRoll(false)
-            }
             saveState()
             updateUiForMode()
         }
@@ -181,6 +192,7 @@ class MainActivity : AppCompatActivity() {
         val newRatio = aspectRatios[currentRatioIndex]
         viewBinding.overlayView.setAspectRatio(newRatio)
         viewBinding.switchFormatButton.text = newRatio.displayName
+        saveState()
     }
 
     private fun switchGrid() {
@@ -192,6 +204,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun takePhoto() {
         val imageCapture = imageCapture ?: return
+
+        triggerHapticFeedback()
+        playShutterSound()
+        animateShutterFlash()
 
         imageCapture.takePicture(
             ContextCompat.getMainExecutor(this),
@@ -209,7 +225,7 @@ class MainActivity : AppCompatActivity() {
                             updateUiForMode()
                         }
                     } else {
-                        saveBitmapToGallery(croppedBitmap)
+                        saveBitmapToGallery(croppedBitmap, null)
                     }
                     image.close()
                 }
@@ -221,6 +237,52 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    @SuppressLint("MissingPermission")
+    private fun triggerHapticFeedback() {
+        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(50)
+        }
+    }
+
+    private fun playShutterSound() {
+        // Make sure you have a "shutter_sound.mp3" file in your res/raw folder
+        try {
+            val mediaPlayer = MediaPlayer.create(this, R.raw.shutter_sound)
+            mediaPlayer?.setOnCompletionListener { it.release() }
+            mediaPlayer?.start()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing shutter sound", e)
+        }
+    }
+
+    private fun animateShutterFlash() {
+        viewBinding.shutterFlash.apply {
+            alpha = 1f
+            visibility = View.VISIBLE
+            translationX = width.toFloat()
+
+            animate()
+                .translationX(0f)
+                .setDuration(100)
+                .setListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        animate()
+                            .translationX(-width.toFloat())
+                            .setDuration(100)
+                            .setListener(object : AnimatorListenerAdapter() {
+                                override fun onAnimationEnd(animation: Animator) {
+                                    visibility = View.GONE
+                                }
+                            })
+                    }
+                })
+        }
+    }
+
     private fun developRoll() {
         val appSpecificDirectory = getDir("film_roll", Context.MODE_PRIVATE)
         val imageFiles = appSpecificDirectory.listFiles()
@@ -230,12 +292,18 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        val rollId = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+        lastDevelopedRollId = rollId
+
+        val currentRatioName = aspectRatios[currentRatioIndex].displayName
+        saveMetadataForRoll(rollId, currentRatioName)
+
         cameraExecutor.execute {
             var developedCount = 0
             imageFiles.forEach { file ->
                 try {
                     val bitmap = BitmapFactory.decodeStream(FileInputStream(file))
-                    saveBitmapToGallery(bitmap)
+                    saveBitmapToGallery(bitmap, rollId)
                     file.delete()
                     developedCount++
                 } catch (e: Exception) {
@@ -246,12 +314,18 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 Toast.makeText(this, "$developedCount photos developed.", Toast.LENGTH_SHORT).show()
                 shotsTaken = 0
-                currentMode = ShootingMode.PRACTICE // Reset to practice mode
+                currentMode = ShootingMode.PRACTICE
                 saveState()
                 updateUiForMode()
             }
         }
     }
+
+    private fun saveMetadataForRoll(rollId: String, format: String) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString("ratio_$rollId", format).apply()
+    }
+
 
     private fun showAbandonRollDialog() {
         AlertDialog.Builder(this)
@@ -281,6 +355,8 @@ class MainActivity : AppCompatActivity() {
         prefs.edit()
             .putInt(KEY_SHOTS_TAKEN, shotsTaken)
             .putString(KEY_SHOOTING_MODE, currentMode.name)
+            .putString(KEY_LAST_ROLL_ID, lastDevelopedRollId)
+            .putInt(KEY_RATIO_INDEX, currentRatioIndex)
             .apply()
     }
 
@@ -289,6 +365,8 @@ class MainActivity : AppCompatActivity() {
         shotsTaken = prefs.getInt(KEY_SHOTS_TAKEN, 0)
         val savedMode = prefs.getString(KEY_SHOOTING_MODE, ShootingMode.PRACTICE.name)
         currentMode = ShootingMode.valueOf(savedMode ?: ShootingMode.PRACTICE.name)
+        lastDevelopedRollId = prefs.getString(KEY_LAST_ROLL_ID, null)
+        currentRatioIndex = prefs.getInt(KEY_RATIO_INDEX, 0)
     }
 
     private fun saveBitmapToInternalStorage(bitmap: Bitmap) {
@@ -337,13 +415,18 @@ class MainActivity : AppCompatActivity() {
         return Bitmap.createBitmap(source, x, y, targetWidth, targetHeight)
     }
 
-    private fun saveBitmapToGallery(bitmap: Bitmap) {
+    private fun saveBitmapToGallery(bitmap: Bitmap, rollId: String?) {
         val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())
         val contentValues = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
             if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/FormatApp-Images")
+                val path = if (rollId != null) {
+                    "Pictures/FormatApp-Images/$rollId"
+                } else {
+                    "Pictures/FormatApp-Images"
+                }
+                put(MediaStore.Images.Media.RELATIVE_PATH, path)
             }
         }
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)

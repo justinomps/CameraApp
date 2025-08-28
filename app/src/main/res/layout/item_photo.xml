@@ -7,10 +7,16 @@
     app:cardCornerRadius="4dp"
     app:cardElevation="2dp">
 
+    <!--
+        CHANGES:
+        - layout_height is now "wrap_content" to allow the image to define its own height.
+        - adjustViewBounds="true" tells the ImageView to respect the original aspect ratio.
+    -->
     <ImageView
         android:id="@+id/photo_image_view"
         android:layout_width="match_parent"
-        android:layout_height="120dp"
-        android:scaleType="centerCrop" />
+        android:layout_height="wrap_content"
+        android:adjustViewBounds="true"
+        android:scaleType="fitCenter" />
 
 </androidx.cardview.widget.CardView>

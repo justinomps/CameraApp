@@ -4,10 +4,8 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000"
     tools:context=".MainActivity">
 
-    <!-- Camera Preview and Overlay remain the same -->
     <androidx.camera.view.PreviewView
         android:id="@+id/camera_preview"
         android:layout_width="match_parent"
@@ -18,36 +16,69 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Mode Switch at the top of the screen -->
-    <com.google.android.material.switchmaterial.SwitchMaterial
-        android:id="@+id/mode_switch"
+    <!-- CHANGE: Added a view for the shutter flash effect - -->
+    <View
+        android:id="@+id/shutter_flash"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/black"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/shutter_button"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginBottom="32dp"
+        android:background="@drawable/ic_shutter"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <Button
+        android:id="@+id/switch_format_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:text="Deliberate Shooting"
-        android:textColor="@android:color/white"
-        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginStart="16dp"
+        android:text="4:3"
+        app:layout_constraintBottom_toBottomOf="@id/shutter_button"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="@id/shutter_button" />
 
-    <!-- Film Counter (Top Left) -->
+    <Button
+        android:id="@+id/grid_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="16dp"
+        android:text="Grid Off"
+        app:layout_constraintBottom_toBottomOf="@id/shutter_button"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/shutter_button" />
+
     <TextView
         android:id="@+id/film_counter_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="24dp"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="16dp"
         android:background="#80000000"
         android:padding="8dp"
         android:textColor="@android:color/white"
         android:textSize="18sp"
-        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        tools:text="1 / 12"
-        tools:visibility="visible" />
+        tools:text="12 / 12" />
 
-    <!-- Gallery Button (Moved to Top Right) -->
+    <Button
+        android:id="@+id/develop_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:text="Develop Roll"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/shutter_button"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
     <ImageButton
         android:id="@+id/gallery_button"
         android:layout_width="48dp"
@@ -55,72 +86,20 @@
         android:layout_marginTop="16dp"
         android:layout_marginEnd="16dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Open Gallery"
-        android:scaleType="fitCenter"
-        android:src="@android:drawable/ic_menu_gallery"
+        android:src="@drawable/ic_gallery"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:tint="@android:color/white" />
 
-    <!-- A container for the bottom controls -->
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:id="@+id/controls_container"
-        android:layout_width="match_parent"
-        android:layout_height="120dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent">
-
-        <!-- Shutter Button -->
-        <ImageButton
-            android:id="@+id/shutter_button"
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Capture Photo"
-            android:scaleType="fitCenter"
-            android:src="@android:drawable/ic_menu_camera"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:tint="@android:color/white" />
-
-        <!-- Develop Button (Now centered to replace the shutter button) -->
-        <Button
-            android:id="@+id/develop_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Develop Roll"
-            android:visibility="gone"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            tools:visibility="visible" />
-
-        <!-- Format Button (Left of shutter) -->
-        <Button
-            android:id="@+id/switch_format_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="16dp"
-            android:text="6x6"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toStartOf="@id/shutter_button"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <!-- Grid Button (Right of shutter) -->
-        <Button
-            android:id="@+id/grid_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
-            android:text="Grid"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toEndOf="@id/shutter_button"
-            app:layout_constraintTop_toTopOf="parent" />
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
+    <Switch
+        android:id="@+id/mode_switch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="16dp"
+        android:textColor="@android:color/white"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="Practice Mode" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
