@@ -2,8 +2,10 @@ package com.example.cameracomposition
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -11,6 +13,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.GridLayoutManager
 import com.example.cameracomposition.databinding.ActivityGalleryBinding
 import java.io.File
@@ -19,6 +22,8 @@ class GalleryActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityGalleryBinding
     private var filmRollId: String? = null
+    private var photoFiles: List<File> = emptyList()
+
 
     companion object {
         private const val REQUEST_CODE_READ_STORAGE = 20
@@ -38,6 +43,10 @@ class GalleryActivity : AppCompatActivity() {
 
         binding.backButton.setOnClickListener {
             finish()
+        }
+
+        binding.shareButton.setOnClickListener {
+            shareContactSheet()
         }
 
         filmRollId = intent.getStringExtra("filmRollId")
@@ -61,7 +70,7 @@ class GalleryActivity : AppCompatActivity() {
     ) == PackageManager.PERMISSION_GRANTED
 
     private fun loadAndDisplayPhotos() {
-        val photoFiles = loadPhotosFromGallery()
+        photoFiles = loadPhotosFromGallery()
         if (photoFiles.isEmpty()) {
             Toast.makeText(this, "No photos found in this roll.", Toast.LENGTH_SHORT).show()
         }
@@ -107,6 +116,28 @@ class GalleryActivity : AppCompatActivity() {
         val adapter = PhotoAdapter(photoFiles)
         binding.photoGridRecyclerview.adapter = adapter
     }
+
+    private fun shareContactSheet() {
+        if (photoFiles.isEmpty()) {
+            Toast.makeText(this, "No photos to share.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val imageUris = ArrayList<Uri>()
+        for (file in photoFiles) {
+            val uri = FileProvider.getUriForFile(this, "${applicationContext.packageName}.provider", file)
+            imageUris.add(uri)
+        }
+
+        val shareIntent = Intent().apply {
+            action = Intent.ACTION_SEND_MULTIPLE
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, imageUris)
+            type = "image/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(shareIntent, "Share contact sheet via"))
+    }
+
 
     override fun onRequestPermissionsResult(
         requestCode: Int,

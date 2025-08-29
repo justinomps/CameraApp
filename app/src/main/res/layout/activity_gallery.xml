@@ -7,7 +7,6 @@
     android:background="#1C1C1E"
     tools:context=".GalleryActivity">
 
-    <!-- A simple "Back" button to return to the camera -->
     <ImageButton
         android:id="@+id/back_button"
         android:layout_width="48dp"
@@ -21,7 +20,6 @@
         app:layout_constraintTop_toTopOf="parent"
         app:tint="@android:color/white" />
 
-    <!-- The title for the screen -->
     <TextView
         android:id="@+id/gallery_title"
         android:layout_width="wrap_content"
@@ -34,7 +32,19 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="@id/back_button" />
 
-    <!-- This RecyclerView will display the grid of photos -->
+    <ImageButton
+        android:id="@+id/share_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Share contact sheet"
+        android:src="@drawable/ic_share"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@android:color/white" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/photo_grid_recyclerview"
         android:layout_width="0dp"

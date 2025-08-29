@@ -39,8 +39,9 @@ class RollsActivity : AppCompatActivity() {
             return emptyList()
         }
 
+        // CHANGE: Filter out the "Composition" directory
         return baseGalleryDir.listFiles { file ->
-            file.isDirectory
+            file.isDirectory && file.name != "Composition"
         }?.sortedDescending() ?: emptyList()
     }
 }

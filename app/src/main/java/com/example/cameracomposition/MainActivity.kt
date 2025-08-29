@@ -109,7 +109,11 @@ class MainActivity : AppCompatActivity() {
         viewBinding.developButton.setOnClickListener { developRoll() }
 
         viewBinding.galleryButton.setOnClickListener {
-            val intent = Intent(this, RollsActivity::class.java)
+            val intent = if (currentMode == ShootingMode.PRACTICE) {
+                Intent(this, CompositionGalleryActivity::class.java)
+            } else {
+                Intent(this, RollsActivity::class.java)
+            }
             startActivity(intent)
         }
 
@@ -140,6 +144,7 @@ class MainActivity : AppCompatActivity() {
             ShootingMode.PRACTICE -> {
                 viewBinding.modeSwitch.text = "Composition Practice"
                 viewBinding.galleryButton.visibility = View.VISIBLE
+                viewBinding.galleryButton.setImageResource(R.drawable.ic_composition_gallery)
                 viewBinding.filmCounterText.visibility = View.GONE
                 viewBinding.developButton.visibility = View.GONE
                 viewBinding.shutterButton.visibility = View.VISIBLE
@@ -148,7 +153,8 @@ class MainActivity : AppCompatActivity() {
             }
             ShootingMode.FILM -> {
                 viewBinding.modeSwitch.text = "Deliberate Shooting"
-                viewBinding.galleryButton.visibility = View.GONE
+                viewBinding.galleryButton.visibility = View.VISIBLE
+                viewBinding.galleryButton.setImageResource(R.drawable.ic_gallery)
                 viewBinding.filmCounterText.visibility = View.VISIBLE
                 viewBinding.filmCounterText.text = "$shotsTaken / $rollCapacity"
 
@@ -225,7 +231,7 @@ class MainActivity : AppCompatActivity() {
                             updateUiForMode()
                         }
                     } else {
-                        saveBitmapToGallery(croppedBitmap, null)
+                        saveBitmapToGallery(croppedBitmap, "Composition")
                     }
                     image.close()
                 }
@@ -415,14 +421,14 @@ class MainActivity : AppCompatActivity() {
         return Bitmap.createBitmap(source, x, y, targetWidth, targetHeight)
     }
 
-    private fun saveBitmapToGallery(bitmap: Bitmap, rollId: String?) {
+    private fun saveBitmapToGallery(bitmap: Bitmap, subfolder: String?) {
         val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())
         val contentValues = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
             if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
-                val path = if (rollId != null) {
-                    "Pictures/FormatApp-Images/$rollId"
+                val path = if (subfolder != null) {
+                    "Pictures/FormatApp-Images/$subfolder"
                 } else {
                     "Pictures/FormatApp-Images"
                 }
