@@ -39,6 +39,12 @@
             android:name=".GalleryActivity"
             android:exported="false" />
         <activity
+            android:name=".PortfolioActivity"
+            android:exported="false" />
+        <activity
+            android:name=".NotebookActivity"
+            android:exported="false" />
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
@@ -47,6 +53,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
 
         <provider
             android:name="androidx.core.content.FileProvider"

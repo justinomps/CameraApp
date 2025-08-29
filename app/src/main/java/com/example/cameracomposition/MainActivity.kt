@@ -132,6 +132,15 @@ class MainActivity : AppCompatActivity() {
             }
             true
         }
+        viewBinding.portfolioButton.setOnClickListener {
+            val intent = Intent(this, PortfolioActivity::class.java)
+            startActivity(intent)
+        }
+
+        viewBinding.notebookButton.setOnClickListener {
+            val intent = Intent(this, NotebookActivity::class.java)
+            startActivity(intent)
+        }
 
         updateUiForMode()
         cameraExecutor = Executors.newSingleThreadExecutor()
@@ -273,12 +282,12 @@ class MainActivity : AppCompatActivity() {
 
             animate()
                 .translationX(0f)
-                .setDuration(100)
+                .setDuration(10)
                 .setListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
                         animate()
                             .translationX(-width.toFloat())
-                            .setDuration(100)
+                            .setDuration(10)
                             .setListener(object : AnimatorListenerAdapter() {
                                 override fun onAnimationEnd(animation: Animator) {
                                     visibility = View.GONE
