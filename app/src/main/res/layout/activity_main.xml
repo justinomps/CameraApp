@@ -102,17 +102,6 @@
         app:layout_constraintTop_toTopOf="parent"
         app:tint="@android:color/white" />
 
-    <ImageButton
-        android:id="@+id/notebook_button"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="8dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@drawable/ic_notebook"
-        app:layout_constraintEnd_toStartOf="@id/portfolio_button"
-        app:layout_constraintTop_toTopOf="parent"
-        app:tint="@android:color/white" />
 
     <Switch
         android:id="@+id/mode_switch"

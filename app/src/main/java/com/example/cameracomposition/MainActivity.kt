@@ -12,6 +12,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -32,7 +33,9 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.exifinterface.media.ExifInterface
 import com.example.cameracomposition.databinding.ActivityMainBinding
+import com.google.gson.Gson
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -51,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private enum class ShootingMode {
         PRACTICE, FILM
     }
+
     private var currentMode = ShootingMode.PRACTICE
     private var shotsTaken = 0
     private val rollCapacity = 12
@@ -63,7 +67,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "FormatApp"
-        private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
         private const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -82,6 +85,7 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_SHOOTING_MODE = "shootingMode"
         private const val KEY_LAST_ROLL_ID = "lastDevelopedRollId"
         private const val KEY_RATIO_INDEX = "ratioIndex"
+        private const val KEY_METADATA_PREFIX = "metadata_"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -117,6 +121,11 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
+        viewBinding.portfolioButton.setOnClickListener {
+            val intent = Intent(this, PortfolioActivity::class.java)
+            startActivity(intent)
+        }
+
         viewBinding.modeSwitch.setOnCheckedChangeListener { _, isChecked ->
             val newMode = if (isChecked) ShootingMode.FILM else ShootingMode.PRACTICE
             if (newMode == currentMode) {
@@ -131,15 +140,6 @@ class MainActivity : AppCompatActivity() {
                 showAbandonRollDialog()
             }
             true
-        }
-        viewBinding.portfolioButton.setOnClickListener {
-            val intent = Intent(this, PortfolioActivity::class.java)
-            startActivity(intent)
-        }
-
-        viewBinding.notebookButton.setOnClickListener {
-            val intent = Intent(this, NotebookActivity::class.java)
-            startActivity(intent)
         }
 
         updateUiForMode()
@@ -160,6 +160,7 @@ class MainActivity : AppCompatActivity() {
                 viewBinding.switchFormatButton.isEnabled = true
                 viewBinding.gridButton.isEnabled = true
             }
+
             ShootingMode.FILM -> {
                 viewBinding.modeSwitch.text = "Deliberate Shooting"
                 viewBinding.galleryButton.visibility = View.VISIBLE
@@ -190,8 +191,13 @@ class MainActivity : AppCompatActivity() {
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(viewBinding.cameraPreview.surfaceProvider)
             }
-            val targetSize = Size(viewBinding.cameraPreview.width, viewBinding.cameraPreview.height)
-            imageCapture = ImageCapture.Builder().setTargetResolution(targetSize).build()
+            val targetSize =
+                Size(viewBinding.cameraPreview.width, viewBinding.cameraPreview.height)
+            imageCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                .setTargetResolution(targetSize)
+                .build()
+
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
             try {
                 cameraProvider.unbindAll()
@@ -219,38 +225,106 @@ class MainActivity : AppCompatActivity() {
 
     private fun takePhoto() {
         val imageCapture = imageCapture ?: return
-
         triggerHapticFeedback()
         playShutterSound()
         animateShutterFlash()
 
-        imageCapture.takePicture(
-            ContextCompat.getMainExecutor(this),
-            object : ImageCapture.OnImageCapturedCallback() {
-                override fun onCaptureSuccess(image: ImageProxy) {
-                    super.onCaptureSuccess(image)
-                    val bitmap = imageProxyToBitmap(image)
-                    val croppedBitmap = cropBitmap(bitmap)
+        val fileName = "photo_${System.currentTimeMillis()}.jpg"
+        val outputFile = if (currentMode == ShootingMode.FILM) {
+            File(getDir("film_roll", Context.MODE_PRIVATE), fileName)
+        } else {
+            val mediaDir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                "FormatApp-Images/Composition"
+            )
+            mediaDir.mkdirs()
+            File(mediaDir, fileName)
+        }
 
-                    if (currentMode == ShootingMode.FILM) {
-                        if (shotsTaken < rollCapacity) {
-                            shotsTaken++
-                            saveBitmapToInternalStorage(croppedBitmap)
-                            saveState()
-                            updateUiForMode()
-                        }
-                    } else {
-                        saveBitmapToGallery(croppedBitmap, "Composition")
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(outputFile).build()
+
+        imageCapture.takePicture(
+            outputOptions,
+            ContextCompat.getMainExecutor(this),
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    // 1. Save metadata from the full, uncropped file
+                    savePhotoMetadata(outputFile.absolutePath)
+
+                    // 2. Now crop the file
+                    val bitmap = BitmapFactory.decodeFile(outputFile.absolutePath)
+                    val rotatedBitmap = rotateBitmap(bitmap, outputFile.absolutePath)
+                    val croppedBitmap = cropBitmap(rotatedBitmap)
+
+                    // 3. Overwrite the original file with the cropped version
+                    try {
+                        val out = FileOutputStream(outputFile)
+                        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                        out.flush()
+                        out.close()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error overwriting file", e)
                     }
-                    image.close()
+
+                    // 4. Update UI
+                    if (currentMode == ShootingMode.FILM) {
+                        shotsTaken++
+                        saveState()
+                        updateUiForMode()
+                        Toast.makeText(baseContext, "Shot $shotsTaken taken.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // For practice mode, notify MediaStore about the new file
+                        val contentValues = ContentValues().apply {
+                            put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/FormatApp-Images/Composition")
+                            } else {
+                                put(MediaStore.Images.Media.DATA, outputFile.absolutePath)
+                            }
+                        }
+                        contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                        Toast.makeText(baseContext, "Practice shot saved.", Toast.LENGTH_SHORT).show()
+                    }
                 }
-                override fun onError(exception: ImageCaptureException) {
-                    super.onError(exception)
-                    Log.e(TAG, "Photo capture failed: ${exception.message}", exception)
+
+                override fun onError(exc: ImageCaptureException) {
+                    Log.e(TAG, "Photo capture failed: ${exc.message}", exc)
                 }
             }
         )
     }
+
+
+    private fun savePhotoMetadata(filePath: String) {
+        try {
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            val gson = Gson()
+
+            val exif = ExifInterface(filePath)
+            val iso = exif.getAttributeInt(ExifInterface.TAG_ISO_SPEED_RATINGS, 0)
+            val shutterSpeedString = exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME) ?: "0.0"
+            val shutterSpeedNanos = (shutterSpeedString.toFloatOrNull() ?: 0f * 1_000_000_000).toLong()
+            val aperture = exif.getAttribute(ExifInterface.TAG_F_NUMBER)?.toFloatOrNull() ?: 0f
+
+            val metadata = PhotoMetadata(
+                imagePath = filePath,
+                aspectRatio = aspectRatios[currentRatioIndex].displayName,
+                iso = iso,
+                aperture = aperture,
+                shutterSpeed = shutterSpeedNanos
+            )
+
+            val json = gson.toJson(metadata)
+            editor.putString("$KEY_METADATA_PREFIX$filePath", json)
+            editor.apply()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reading or saving metadata", e)
+        }
+    }
+
 
     @SuppressLint("MissingPermission")
     private fun triggerHapticFeedback() {
@@ -264,7 +338,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun playShutterSound() {
-        // Make sure you have a "shutter_sound.mp3" file in your res/raw folder
         try {
             val mediaPlayer = MediaPlayer.create(this, R.raw.shutter_sound)
             mediaPlayer?.setOnCompletionListener { it.release() }
@@ -282,12 +355,12 @@ class MainActivity : AppCompatActivity() {
 
             animate()
                 .translationX(0f)
-                .setDuration(10)
+                .setDuration(50)
                 .setListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
                         animate()
                             .translationX(-width.toFloat())
-                            .setDuration(10)
+                            .setDuration(50)
                             .setListener(object : AnimatorListenerAdapter() {
                                 override fun onAnimationEnd(animation: Animator) {
                                     visibility = View.GONE
@@ -307,7 +380,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val rollId = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+        val rollId =
+            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
         lastDevelopedRollId = rollId
 
         val currentRatioName = aspectRatios[currentRatioIndex].displayName
@@ -318,7 +392,7 @@ class MainActivity : AppCompatActivity() {
             imageFiles.forEach { file ->
                 try {
                     val bitmap = BitmapFactory.decodeStream(FileInputStream(file))
-                    saveBitmapToGallery(bitmap, rollId)
+                    saveBitmapToGallery(bitmap, rollId, file.name)
                     file.delete()
                     developedCount++
                 } catch (e: Exception) {
@@ -327,7 +401,8 @@ class MainActivity : AppCompatActivity() {
             }
 
             runOnUiThread {
-                Toast.makeText(this, "$developedCount photos developed.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "$developedCount photos developed.", Toast.LENGTH_SHORT)
+                    .show()
                 shotsTaken = 0
                 currentMode = ShootingMode.PRACTICE
                 saveState()
@@ -384,8 +459,7 @@ class MainActivity : AppCompatActivity() {
         currentRatioIndex = prefs.getInt(KEY_RATIO_INDEX, 0)
     }
 
-    private fun saveBitmapToInternalStorage(bitmap: Bitmap) {
-        val name = "shot_${shotsTaken}_${System.currentTimeMillis()}.jpg"
+    private fun saveBitmapToInternalStorage(bitmap: Bitmap, name: String): File? {
         val appSpecificDirectory = getDir("film_roll", Context.MODE_PRIVATE)
         if (!appSpecificDirectory.exists()) {
             appSpecificDirectory.mkdirs()
@@ -396,19 +470,22 @@ class MainActivity : AppCompatActivity() {
             val outputStream: OutputStream = FileOutputStream(imageFile)
             bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
             outputStream.close()
-            Toast.makeText(this, "Shot $shotsTaken taken.", Toast.LENGTH_SHORT).show()
+            return imageFile
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save bitmap to internal storage", e)
+            return null
         }
     }
 
-    private fun imageProxyToBitmap(image: ImageProxy): Bitmap {
-        val buffer = image.planes[0].buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    private fun rotateBitmap(bitmap: Bitmap, path: String): Bitmap {
+        val exif = ExifInterface(path)
+        val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
         val matrix = Matrix()
-        matrix.postRotate(image.imageInfo.rotationDegrees.toFloat())
+        when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+        }
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
@@ -430,31 +507,37 @@ class MainActivity : AppCompatActivity() {
         return Bitmap.createBitmap(source, x, y, targetWidth, targetHeight)
     }
 
-    private fun saveBitmapToGallery(bitmap: Bitmap, subfolder: String?) {
-        val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())
-        val contentValues = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
-                val path = if (subfolder != null) {
-                    "Pictures/FormatApp-Images/$subfolder"
+    private fun saveBitmapToGallery(
+        bitmap: Bitmap,
+        subfolder: String?,
+        fileName: String
+    ): File? {
+        val mediaDir = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+            "FormatApp-Images/$subfolder"
+        )
+        mediaDir.mkdirs()
+        val imageFile = File(mediaDir, fileName)
+
+        try {
+            val outputStream: OutputStream = FileOutputStream(imageFile)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+            outputStream.close()
+
+            val contentValues = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/FormatApp-Images/$subfolder")
                 } else {
-                    "Pictures/FormatApp-Images"
+                    put(MediaStore.Images.Media.DATA, imageFile.absolutePath)
                 }
-                put(MediaStore.Images.Media.RELATIVE_PATH, path)
             }
-        }
-        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-        if (uri != null) {
-            try {
-                val outputStream: OutputStream? = contentResolver.openOutputStream(uri)
-                if (outputStream != null) {
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
-                    outputStream.close()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to save bitmap", e)
-            }
+            contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            return imageFile
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save bitmap", e)
+            return null
         }
     }
 
@@ -462,13 +545,18 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (allPermissionsGranted()) {
                 startCamera()
             } else {
-                Toast.makeText(this, "Permissions not granted by the user.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Permissions not granted by the user.", Toast.LENGTH_SHORT)
+                    .show()
                 finish()
             }
         }

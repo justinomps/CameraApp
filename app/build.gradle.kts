@@ -61,5 +61,6 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:${cameraxVersion}")
     implementation("androidx.camera:camera-view:${cameraxVersion}")
     implementation("com.google.code.gson:gson:2.9.0")
+    implementation("androidx.exifinterface:exifinterface:1.3.6")
     // ----------------------------
 }
