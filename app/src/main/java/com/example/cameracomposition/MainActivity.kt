@@ -304,8 +304,12 @@ class MainActivity : AppCompatActivity() {
 
             val exif = ExifInterface(filePath)
             val iso = exif.getAttributeInt(ExifInterface.TAG_ISO_SPEED_RATINGS, 0)
-            val shutterSpeedString = exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME) ?: "0.0"
-            val shutterSpeedNanos = (shutterSpeedString.toFloatOrNull() ?: 0f * 1_000_000_000).toLong()
+
+            // Correctly parse the shutter speed value
+            val shutterSpeedString = exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME)
+            val shutterSpeedSeconds = shutterSpeedString?.toFloatOrNull() ?: 0f
+            val shutterSpeedNanos = (shutterSpeedSeconds * 1_000_000_000).toLong()
+
             val aperture = exif.getAttribute(ExifInterface.TAG_F_NUMBER)?.toFloatOrNull() ?: 0f
 
             val metadata = PhotoMetadata(
@@ -324,7 +328,6 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "Error reading or saving metadata", e)
         }
     }
-
 
     @SuppressLint("MissingPermission")
     private fun triggerHapticFeedback() {
