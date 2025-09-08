@@ -8,6 +8,8 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
 import com.example.cameracomposition.databinding.ActivityPhotoDetailBinding
 import com.google.gson.Gson
@@ -83,9 +85,51 @@ class PhotoDetailActivity : AppCompatActivity() {
                 toggleNotebookVisibility()
                 true
             }
+            R.id.action_delete -> {
+                showDeleteConfirmationDialog()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }
+
+    private fun showDeleteConfirmationDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Photo")
+            .setMessage("Are you sure you want to permanently delete this photo?")
+            .setPositiveButton("Delete") { _, _ -> deletePhoto() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun deletePhoto() {
+        photoPath?.let { path ->
+            val photoFile = File(path)
+            if (photoFile.exists()) {
+                photoFile.delete()
+            }
+
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+
+            // Remove metadata
+            editor.remove("$KEY_METADATA_PREFIX$path")
+
+            // Remove from favorites if it's there
+            val favorites = prefs.getStringSet(KEY_FAVORITES, mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+            if (favorites.contains(path)) {
+                favorites.remove(path)
+                editor.putStringSet(KEY_FAVORITES, favorites)
+            }
+
+            editor.apply()
+
+            // Inform the user and close the activity
+            Toast.makeText(this, "Photo deleted", Toast.LENGTH_SHORT).show()
+            finish() // Go back to the gallery
+        }
+    }
+
 
     private fun loadMetadata() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

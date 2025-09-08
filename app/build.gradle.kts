@@ -63,4 +63,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.9.0")
     implementation("androidx.exifinterface:exifinterface:1.3.6")
     // ----------------------------
+    // Coroutines for background tasks
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
 }

@@ -37,10 +37,15 @@ class CompositionGalleryActivity : AppCompatActivity() {
             finish()
         }
 
+        if (!isPermissionGranted()) {
+            ActivityCompat.requestPermissions(this, arrayOf(REQUIRED_PERMISSION), REQUEST_CODE_READ_STORAGE)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
         if (isPermissionGranted()) {
             loadAndDisplayPhotos()
-        } else {
-            ActivityCompat.requestPermissions(this, arrayOf(REQUIRED_PERMISSION), REQUEST_CODE_READ_STORAGE)
         }
     }
 
