@@ -16,6 +16,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.text.TextPaint
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -39,6 +40,7 @@ class GalleryActivity : AppCompatActivity() {
 
 
     companion object {
+        private const val TAG = "GalleryActivity"
         private const val REQUEST_CODE_READ_STORAGE = 20
         private val REQUIRED_PERMISSION =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -143,14 +145,17 @@ class GalleryActivity : AppCompatActivity() {
             return
         }
 
-        lifecycleScope.launch {
-            binding.loadingIndicator.visibility = View.VISIBLE
-            binding.shareButton.isEnabled = false
+        // Show loading indicator and disable the share button on the main thread
+        binding.loadingIndicator.visibility = View.VISIBLE
+        binding.shareButton.isEnabled = false
 
+        lifecycleScope.launch {
+            // Perform heavy work on a background thread
             val contentUri = withContext(Dispatchers.IO) {
                 createContactSheetImage()
             }
 
+            // Switch back to the main thread to handle the result
             binding.loadingIndicator.visibility = View.GONE
             binding.shareButton.isEnabled = true
 
@@ -163,7 +168,7 @@ class GalleryActivity : AppCompatActivity() {
                 }
                 startActivity(Intent.createChooser(shareIntent, "Share contact sheet via"))
             } else {
-                Toast.makeText(this@GalleryActivity, "Failed to share contact sheet.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@GalleryActivity, "Failed to create contact sheet.", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -180,8 +185,9 @@ class GalleryActivity : AppCompatActivity() {
         val totalWidth = (thumbWidth * cols) + (padding * (cols + 1))
         val totalHeight = (thumbHeight * rows) + (padding * (rows + 1)) + headerHeight
 
+        var resultBitmap: Bitmap? = null
         return try {
-            val resultBitmap = Bitmap.createBitmap(totalWidth, totalHeight, Bitmap.Config.ARGB_8888)
+            resultBitmap = Bitmap.createBitmap(totalWidth, totalHeight, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(resultBitmap)
             canvas.drawColor(Color.BLACK)
 
@@ -214,14 +220,17 @@ class GalleryActivity : AppCompatActivity() {
             // --- Save to File ---
             val cachePath = File(cacheDir, "images")
             cachePath.mkdirs()
-            val file = File(cachePath, "contact_sheet_share.jpg")
+            val file = File(cachePath, "contact_sheet_${System.currentTimeMillis()}.jpg")
             val stream = FileOutputStream(file)
             resultBitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
             stream.close()
-            resultBitmap.recycle()
+
             FileProvider.getUriForFile(this@GalleryActivity, "${applicationContext.packageName}.provider", file)
         } catch (e: Exception) {
-            null
+            Log.e(TAG, "Error creating contact sheet", e)
+            null // Return null if any error occurs
+        } finally {
+            resultBitmap?.recycle() // Ensure the final bitmap is always recycled
         }
     }
 
@@ -236,6 +245,7 @@ class GalleryActivity : AppCompatActivity() {
                 BitmapFactory.decodeFile(file.absolutePath, this)
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Error decoding sampled bitmap", e)
             null
         }
     }
@@ -270,4 +280,3 @@ class GalleryActivity : AppCompatActivity() {
         }
     }
 }
-
