@@ -11,6 +11,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -175,28 +176,32 @@ class GalleryActivity : AppCompatActivity() {
 
     private fun createContactSheetImage(): Uri? {
         // --- Configuration ---
-        val cols = getSpanCount()
+        val cols = 4 // Fixed columns for a consistent look
         val rows = (photoFiles.size + cols - 1) / cols
-        val thumbWidth = 200
-        val thumbHeight = 200
-        val padding = 20
-        val headerHeight = 100
+        val thumbSize = 300 // The size of the entire photo cell including border
+        val padding = 40 // Space between each photo cell
+        val borderSize = 15 // The width of the white border around each photo
+        val headerHeight = 120
 
-        val totalWidth = (thumbWidth * cols) + (padding * (cols + 1))
-        val totalHeight = (thumbHeight * rows) + (padding * (rows + 1)) + headerHeight
+        val totalWidth = (thumbSize * cols) + (padding * (cols + 1))
+        val totalHeight = (thumbSize * rows) + (padding * (rows + 1)) + headerHeight
+
+        // --- Paints ---
+        val backgroundPaint = Paint().apply { color = Color.BLACK }
+        val borderPaint = Paint().apply { color = Color.WHITE }
+        val titlePaint = TextPaint().apply {
+            color = Color.WHITE
+            textSize = 50f
+            isAntiAlias = true
+        }
 
         var resultBitmap: Bitmap? = null
         return try {
             resultBitmap = Bitmap.createBitmap(totalWidth, totalHeight, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(resultBitmap)
-            canvas.drawColor(Color.BLACK)
+            canvas.drawRect(0f, 0f, totalWidth.toFloat(), totalHeight.toFloat(), backgroundPaint)
 
             // --- Draw Header ---
-            val titlePaint = TextPaint().apply {
-                color = Color.WHITE
-                textSize = 40f
-                isAntiAlias = true
-            }
             val title = "Roll #$filmRollId"
             val textBounds = Rect()
             titlePaint.getTextBounds(title, 0, title.length, textBounds)
@@ -207,13 +212,41 @@ class GalleryActivity : AppCompatActivity() {
                 val row = index / cols
                 val col = index % cols
 
-                val left = padding + col * (thumbWidth + padding)
-                val top = headerHeight + padding + row * (thumbHeight + padding)
+                val cellLeft = padding + col * (thumbSize + padding)
+                val cellTop = headerHeight + padding + row * (thumbSize + padding)
 
-                val thumbBitmap = decodeSampledBitmapFromFile(file, thumbWidth, thumbHeight)
+                // 1. Draw the white border
+                val borderRect = RectF(cellLeft.toFloat(), cellTop.toFloat(), (cellLeft + thumbSize).toFloat(), (cellTop + thumbSize).toFloat())
+                canvas.drawRect(borderRect, borderPaint)
+
+                // 2. Draw the inner black background for the photo
+                val photoBgRect = RectF(borderRect.left + borderSize, borderRect.top + borderSize, borderRect.right - borderSize, borderRect.bottom - borderSize)
+                canvas.drawRect(photoBgRect, backgroundPaint)
+
+                // 3. Decode, scale, and draw the actual photo
+                val thumbBitmap = decodeSampledBitmapFromFile(file, thumbSize, thumbSize)
                 if (thumbBitmap != null) {
-                    canvas.drawBitmap(thumbBitmap, left.toFloat(), top.toFloat(), null)
-                    thumbBitmap.recycle() // Free memory immediately
+                    val srcRect = Rect(0, 0, thumbBitmap.width, thumbBitmap.height)
+                    val dstRect = RectF()
+
+                    val photoRatio = photoBgRect.width() / photoBgRect.height()
+                    val bitmapRatio = thumbBitmap.width.toFloat() / thumbBitmap.height.toFloat()
+
+                    var finalWidth = photoBgRect.width()
+                    var finalHeight = photoBgRect.height()
+
+                    if (bitmapRatio > photoRatio) { // Bitmap is wider
+                        finalHeight = finalWidth / bitmapRatio
+                    } else { // Bitmap is taller or same aspect ratio
+                        finalWidth = finalHeight * bitmapRatio
+                    }
+
+                    val leftOffset = (photoBgRect.width() - finalWidth) / 2
+                    val topOffset = (photoBgRect.height() - finalHeight) / 2
+                    dstRect.set(photoBgRect.left + leftOffset, photoBgRect.top + topOffset, photoBgRect.right - leftOffset, photoBgRect.bottom - topOffset)
+
+                    canvas.drawBitmap(thumbBitmap, srcRect, dstRect, null)
+                    thumbBitmap.recycle()
                 }
             }
 
@@ -280,3 +313,4 @@ class GalleryActivity : AppCompatActivity() {
         }
     }
 }
+
