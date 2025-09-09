@@ -62,6 +62,12 @@ dependencies {
     implementation("androidx.camera:camera-view:${cameraxVersion}")
     implementation("com.google.code.gson:gson:2.9.0")
     implementation("androidx.exifinterface:exifinterface:1.3.6")
+    implementation("androidx.camera:camera-camera2:${cameraxVersion}")
+    implementation("androidx.camera:camera-lifecycle:${cameraxVersion}")
+    implementation("androidx.camera:camera-view:${cameraxVersion}")
+    implementation("androidx.camera:camera-extensions:${cameraxVersion}")
+    implementation("com.google.code.gson:gson:2.9.0")
+    implementation("androidx.exifinterface:exifinterface:1.3.6")
     // ----------------------------
     // Coroutines for background tasks
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

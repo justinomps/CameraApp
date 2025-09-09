@@ -26,7 +26,12 @@ class OverlayView @JvmOverloads constructor(
     enum class GridType(val displayName: String) {
         NONE("Grid Off"),
         THIRDS("Thirds"),
-        CENTER_CROSS("Cross")
+        CENTER_CROSS("Cross"),
+        // --- Tutorial Specific Grids ---
+        THIRDS_INTERSECTIONS("Thirds+"),
+        HEADROOM_GUIDE("Headroom"),
+        LEADING_LINES("Lines"),
+        NATURAL_FRAME("Frame")
     }
 
     private var currentAspectRatio: AspectRatio = AspectRatio.SQUARE
@@ -47,6 +52,22 @@ class OverlayView @JvmOverloads constructor(
         isAntiAlias = true
         // SCREEN blend mode brightens where colors overlap.
         // This makes the red line "glow" over light parts of the image.
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
+    }
+
+    private val tutorialHighlightPaint = Paint().apply {
+        color = Color.parseColor("#A6FFD700") // Semi-transparent gold
+        style = Paint.Style.FILL
+        isAntiAlias = true
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
+    }
+
+    private val tutorialFramePaint = Paint().apply {
+        color = Color.parseColor("#A640E0D0") // Semi-transparent turquoise
+        style = Paint.Style.STROKE
+        strokeWidth = 8f
+        isAntiAlias = true
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(30f, 20f), 0f)
         xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
     }
     // ---------------------------------------------
@@ -123,7 +144,33 @@ class OverlayView @JvmOverloads constructor(
             GridType.NONE -> {
                 // Do nothing
             }
+            // --- TUTORIAL GRIDS ---
+            GridType.THIRDS_INTERSECTIONS -> {
+                val thirdWidth = rect.width() / 3
+                val thirdHeight = rect.height() / 3
+                // Draw standard thirds grid first
+                canvas.drawLine(rect.left + thirdWidth, rect.top, rect.left + thirdWidth, rect.bottom, gridPaint)
+                canvas.drawLine(rect.left + thirdWidth * 2, rect.top, rect.left + thirdWidth * 2, rect.bottom, gridPaint)
+                canvas.drawLine(rect.left, rect.top + thirdHeight, rect.right, rect.top + thirdHeight, gridPaint)
+                canvas.drawLine(rect.left, rect.top + thirdHeight * 2, rect.right, rect.top + thirdHeight * 2, gridPaint)
+
+                // Now highlight the intersections
+                val radius = 25f
+                canvas.drawCircle(rect.left + thirdWidth, rect.top + thirdHeight, radius, tutorialHighlightPaint)
+                canvas.drawCircle(rect.left + thirdWidth * 2, rect.top + thirdHeight, radius, tutorialHighlightPaint)
+                canvas.drawCircle(rect.left + thirdWidth, rect.top + thirdHeight * 2, radius, tutorialHighlightPaint)
+                canvas.drawCircle(rect.left + thirdWidth * 2, rect.top + thirdHeight * 2, radius, tutorialHighlightPaint)
+            }
+            GridType.HEADROOM_GUIDE -> {
+                val thirdHeight = rect.height() / 3
+                canvas.drawLine(rect.left, rect.top + thirdHeight, rect.right, rect.top + thirdHeight, tutorialFramePaint)
+            }
+            // Add other tutorial grid drawing logic here in the future
+            else -> {
+                // Default case, do nothing
+            }
         }
         // ---------------------------------------------------------
     }
 }
+

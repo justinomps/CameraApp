@@ -54,6 +54,23 @@
         app:layout_constraintTop_toTopOf="@id/shutter_button" />
 
     <TextView
+        android:id="@+id/tutorial_prompt_text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:background="#A6000000"
+        android:padding="12dp"
+        android:textAlignment="center"
+        android:textColor="@android:color/white"
+        android:textSize="16sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/shutter_button"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        tools:text="This is a sample tutorial prompt. Place your subject on one of the glowing dots."
+        tools:visibility="visible" />
+
+    <TextView
         android:id="@+id/film_counter_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -102,6 +119,18 @@
         app:layout_constraintTop_toTopOf="parent"
         app:tint="@android:color/white" />
 
+    <ImageButton
+        android:id="@+id/tutorial_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Start Composition Tutorial"
+        android:src="@drawable/ic_tutorial"
+        app:layout_constraintEnd_toStartOf="@id/portfolio_button"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@android:color/white" />
 
     <Switch
         android:id="@+id/mode_switch"
@@ -115,3 +144,4 @@
         tools:text="Practice Mode" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
+

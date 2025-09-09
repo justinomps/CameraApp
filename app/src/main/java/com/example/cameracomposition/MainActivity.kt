@@ -28,6 +28,8 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.extensions.ExtensionMode
+import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -50,7 +52,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraExecutor: ExecutorService
 
     private enum class ShootingMode {
-        PRACTICE, FILM
+        PRACTICE, FILM, TUTORIAL
     }
 
     private var currentMode = ShootingMode.PRACTICE
@@ -62,6 +64,29 @@ class MainActivity : AppCompatActivity() {
     private var currentRatioIndex = 0
     private val gridTypes = OverlayView.GridType.values()
     private var currentGridIndex = 1
+
+    // --- Tutorial State ---
+    private var tutorialLessonIndex = 0
+    private val tutorialLessons = listOf(
+        // Lesson 1.1
+        {
+            viewBinding.tutorialPromptText.text = "The Rule of Thirds helps create balanced images. Try placing the most important part of your subject on one of the highlighted points."
+            viewBinding.overlayView.setGridType(OverlayView.GridType.THIRDS_INTERSECTIONS)
+            viewBinding.gridButton.isEnabled = false // Disable grid control during tutorial
+        },
+        // Lesson 1.2
+        {
+            viewBinding.tutorialPromptText.text = "Symmetry can be powerful. Find a symmetrical scene and use the crosshairs to perfectly align the center of your subject."
+            viewBinding.overlayView.setGridType(OverlayView.GridType.CENTER_CROSS)
+        },
+        // Lesson 1.3
+        {
+            viewBinding.tutorialPromptText.text = "When taking a photo of a person, avoid cutting off the top of their head. Try to keep their eyes on or near the guide line."
+            viewBinding.overlayView.setGridType(OverlayView.GridType.HEADROOM_GUIDE)
+        }
+        // ... Future lessons will be added here
+    )
+
 
     companion object {
         private const val TAG = "FormatApp"
@@ -124,6 +149,10 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
+        viewBinding.tutorialButton.setOnClickListener {
+            toggleTutorialMode()
+        }
+
         viewBinding.modeSwitch.setOnCheckedChangeListener { _, isChecked ->
             val newMode = if (isChecked) ShootingMode.FILM else ShootingMode.PRACTICE
             if (newMode == currentMode) {
@@ -151,20 +180,28 @@ class MainActivity : AppCompatActivity() {
             ShootingMode.PRACTICE -> {
                 viewBinding.modeSwitch.text = "Composition Practice"
                 viewBinding.galleryButton.visibility = View.VISIBLE
+                viewBinding.portfolioButton.visibility = View.VISIBLE
                 viewBinding.galleryButton.setImageResource(R.drawable.ic_composition_gallery)
                 viewBinding.filmCounterText.visibility = View.GONE
                 viewBinding.developButton.visibility = View.GONE
                 viewBinding.shutterButton.visibility = View.VISIBLE
                 viewBinding.switchFormatButton.isEnabled = true
                 viewBinding.gridButton.isEnabled = true
+                viewBinding.tutorialButton.visibility = View.VISIBLE
+                viewBinding.tutorialPromptText.visibility = View.GONE
+                // Restore normal grid
+                viewBinding.overlayView.setGridType(gridTypes[currentGridIndex])
             }
 
             ShootingMode.FILM -> {
                 viewBinding.modeSwitch.text = "Deliberate Shooting"
                 viewBinding.galleryButton.visibility = View.VISIBLE
+                viewBinding.portfolioButton.visibility = View.VISIBLE
                 viewBinding.galleryButton.setImageResource(R.drawable.ic_gallery)
                 viewBinding.filmCounterText.visibility = View.VISIBLE
                 viewBinding.filmCounterText.text = "$shotsTaken / $rollCapacity"
+                viewBinding.tutorialButton.visibility = View.GONE
+                viewBinding.tutorialPromptText.visibility = View.GONE
 
                 val isRollStarted = shotsTaken > 0
                 viewBinding.switchFormatButton.isEnabled = !isRollStarted
@@ -178,6 +215,23 @@ class MainActivity : AppCompatActivity() {
                     viewBinding.shutterButton.visibility = View.VISIBLE
                 }
             }
+
+            ShootingMode.TUTORIAL -> {
+                viewBinding.modeSwitch.text = "Tutorial Mode"
+                viewBinding.modeSwitch.isChecked = false // Ensure switch is in 'practice' state visually
+                viewBinding.galleryButton.visibility = View.GONE
+                viewBinding.portfolioButton.visibility = View.GONE
+                viewBinding.filmCounterText.visibility = View.GONE
+                viewBinding.developButton.visibility = View.GONE
+                viewBinding.shutterButton.visibility = View.VISIBLE
+                viewBinding.switchFormatButton.isEnabled = false
+                viewBinding.gridButton.isEnabled = false
+                viewBinding.tutorialButton.visibility = View.VISIBLE // Keep it visible to exit
+                viewBinding.tutorialPromptText.visibility = View.VISIBLE
+
+                // Execute the current lesson's UI setup
+                tutorialLessons[tutorialLessonIndex].invoke()
+            }
         }
     }
 
@@ -186,23 +240,32 @@ class MainActivity : AppCompatActivity() {
 
         cameraProviderFuture.addListener({
             val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(viewBinding.cameraPreview.surfaceProvider)
-            }
-            val targetSize =
-                Size(viewBinding.cameraPreview.width, viewBinding.cameraPreview.height)
-            imageCapture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-                .setTargetResolution(targetSize)
-                .build()
 
-            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-            try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
-            } catch (exc: Exception) {
-                Log.e(TAG, "Use case binding failed", exc)
-            }
+            // --- CameraX Extensions ---
+            val extensionsManagerFuture = ExtensionsManager.getInstanceAsync(this, cameraProvider)
+            extensionsManagerFuture.addListener({
+                val extensionsManager = extensionsManagerFuture.get()
+                // --------------------------
+
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(viewBinding.cameraPreview.surfaceProvider)
+                }
+                val targetSize =
+                    Size(viewBinding.cameraPreview.width, viewBinding.cameraPreview.height)
+                imageCapture = ImageCapture.Builder()
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                    .setTargetResolution(targetSize)
+                    .build()
+
+                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                try {
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
+                } catch (exc: Exception) {
+                    Log.e(TAG, "Use case binding failed", exc)
+                }
+
+            }, ContextCompat.getMainExecutor(this))
         }, ContextCompat.getMainExecutor(this))
     }
 
@@ -222,6 +285,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun takePhoto() {
+        if (currentMode == ShootingMode.TUTORIAL) {
+            // In tutorial mode, the shutter button advances the lesson
+            advanceTutorial()
+            return
+        }
+
         val imageCapture = imageCapture ?: return
         triggerHapticFeedback()
         playShutterSound()
@@ -441,6 +510,38 @@ class MainActivity : AppCompatActivity() {
         updateUiForMode()
     }
 
+    private fun toggleTutorialMode() {
+        if (currentMode == ShootingMode.TUTORIAL) {
+            // Exit tutorial mode
+            currentMode = ShootingMode.PRACTICE
+            Toast.makeText(this, "Exited Tutorial", Toast.LENGTH_SHORT).show()
+        } else {
+            // Enter tutorial mode
+            currentMode = ShootingMode.TUTORIAL
+            tutorialLessonIndex = 0 // Start from the first lesson
+            Toast.makeText(this, "Tutorial Started: Rule of Thirds", Toast.LENGTH_SHORT).show()
+        }
+        updateUiForMode()
+    }
+
+    private fun advanceTutorial() {
+        tutorialLessonIndex++
+        if (tutorialLessonIndex >= tutorialLessons.size) {
+            // End of tutorial
+            Toast.makeText(this, "Tutorial Complete!", Toast.LENGTH_LONG).show()
+            currentMode = ShootingMode.PRACTICE
+        } else {
+            // Move to the next lesson
+            val nextLessonName = when(tutorialLessonIndex) {
+                1 -> "Centered Composition"
+                2 -> "Headroom"
+                else -> "Next Lesson"
+            }
+            Toast.makeText(this, "Next: $nextLessonName", Toast.LENGTH_SHORT).show()
+        }
+        updateUiForMode()
+    }
+
     private fun saveState() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
@@ -568,3 +669,4 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor.shutdown()
     }
 }
+
