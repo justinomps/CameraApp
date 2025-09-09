@@ -25,6 +25,16 @@
         android:theme="@style/Theme.CameraComposition"
         tools:targetApi="31">
         <activity
+            android:name=".TutorialDetailActivity"
+            android:exported="false"
+            android:parentActivityName=".TutorialHubActivity"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
+        <activity
+            android:name=".TutorialHubActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
+        <activity
             android:name=".CompositionGalleryActivity"
             android:exported="false" />
         <activity
@@ -68,3 +78,4 @@
     </application>
 
 </manifest>
+

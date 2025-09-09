@@ -28,8 +28,6 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
-import androidx.camera.extensions.ExtensionMode
-import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -52,41 +50,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraExecutor: ExecutorService
 
     private enum class ShootingMode {
-        PRACTICE, FILM, TUTORIAL
+        PRACTICE, FILM, CHALLENGE
     }
 
     private var currentMode = ShootingMode.PRACTICE
     private var shotsTaken = 0
-    private val rollCapacity = 12
+    private var rollCapacity = 12
     private var lastDevelopedRollId: String? = null
+    private var challengeName: String? = null
+
 
     private val aspectRatios = OverlayView.AspectRatio.values()
     private var currentRatioIndex = 0
     private val gridTypes = OverlayView.GridType.values()
     private var currentGridIndex = 1
-
-    // --- Tutorial State ---
-    private var tutorialLessonIndex = 0
-    private val tutorialLessons = listOf(
-        // Lesson 1.1
-        {
-            viewBinding.tutorialPromptText.text = "The Rule of Thirds helps create balanced images. Try placing the most important part of your subject on one of the highlighted points."
-            viewBinding.overlayView.setGridType(OverlayView.GridType.THIRDS_INTERSECTIONS)
-            viewBinding.gridButton.isEnabled = false // Disable grid control during tutorial
-        },
-        // Lesson 1.2
-        {
-            viewBinding.tutorialPromptText.text = "Symmetry can be powerful. Find a symmetrical scene and use the crosshairs to perfectly align the center of your subject."
-            viewBinding.overlayView.setGridType(OverlayView.GridType.CENTER_CROSS)
-        },
-        // Lesson 1.3
-        {
-            viewBinding.tutorialPromptText.text = "When taking a photo of a person, avoid cutting off the top of their head. Try to keep their eyes on or near the guide line."
-            viewBinding.overlayView.setGridType(OverlayView.GridType.HEADROOM_GUIDE)
-        }
-        // ... Future lessons will be added here
-    )
-
 
     companion object {
         private const val TAG = "FormatApp"
@@ -109,6 +86,12 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_LAST_ROLL_ID = "lastDevelopedRollId"
         private const val KEY_RATIO_INDEX = "ratioIndex"
         private const val KEY_METADATA_PREFIX = "metadata_"
+
+        const val ACTION_PRACTICE = "com.example.cameracomposition.ACTION_PRACTICE"
+        const val ACTION_CHALLENGE = "com.example.cameracomposition.ACTION_CHALLENGE"
+        const val EXTRA_PRACTICE_GRID_TYPE = "extra_practice_grid_type"
+        const val EXTRA_CHALLENGE_NAME = "extra_challenge_name"
+
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -130,11 +113,15 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+        // Standard listeners
         viewBinding.shutterButton.setOnClickListener { takePhoto() }
         viewBinding.switchFormatButton.setOnClickListener { switchFormat() }
         viewBinding.gridButton.setOnClickListener { switchGrid() }
         viewBinding.developButton.setOnClickListener { developRoll() }
-
+        viewBinding.tutorialButton.setOnClickListener {
+            val intent = Intent(this, TutorialHubActivity::class.java)
+            startActivity(intent)
+        }
         viewBinding.galleryButton.setOnClickListener {
             val intent = if (currentMode == ShootingMode.PRACTICE) {
                 Intent(this, CompositionGalleryActivity::class.java)
@@ -148,11 +135,6 @@ class MainActivity : AppCompatActivity() {
             val intent = Intent(this, PortfolioActivity::class.java)
             startActivity(intent)
         }
-
-        viewBinding.tutorialButton.setOnClickListener {
-            toggleTutorialMode()
-        }
-
         viewBinding.modeSwitch.setOnCheckedChangeListener { _, isChecked ->
             val newMode = if (isChecked) ShootingMode.FILM else ShootingMode.PRACTICE
             if (newMode == currentMode) {
@@ -169,39 +151,78 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
+
+        handleIntent(intent)
         updateUiForMode()
         cameraExecutor = Executors.newSingleThreadExecutor()
     }
 
+    private fun handleIntent(intent: Intent?) {
+        when (intent?.action) {
+            ACTION_PRACTICE -> {
+                val gridType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getSerializableExtra(EXTRA_PRACTICE_GRID_TYPE, OverlayView.GridType::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getSerializableExtra(EXTRA_PRACTICE_GRID_TYPE) as? OverlayView.GridType
+                }
+                gridType?.let {
+                    currentMode = ShootingMode.PRACTICE // Ensure we're in practice mode
+                    viewBinding.overlayView.setGridType(it)
+                }
+            }
+            ACTION_CHALLENGE -> {
+                challengeName = intent.getStringExtra(EXTRA_CHALLENGE_NAME)
+                val gridType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getSerializableExtra(EXTRA_PRACTICE_GRID_TYPE, OverlayView.GridType::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getSerializableExtra(EXTRA_PRACTICE_GRID_TYPE) as? OverlayView.GridType
+                }
+                if (challengeName != null && gridType != null) {
+                    currentMode = ShootingMode.CHALLENGE
+                    shotsTaken = 0
+                    viewBinding.overlayView.setGridType(gridType)
+                }
+            }
+            else -> {
+                // Default behavior, no special mode
+                challengeName = null
+            }
+        }
+    }
+
+
     private fun updateUiForMode() {
         viewBinding.modeSwitch.isChecked = currentMode == ShootingMode.FILM
+
+        // Hide tutorial-specific UI by default
+        viewBinding.tutorialPromptText.visibility = View.GONE
+        viewBinding.tutorialButton.visibility = View.VISIBLE
 
         when (currentMode) {
             ShootingMode.PRACTICE -> {
                 viewBinding.modeSwitch.text = "Composition Practice"
                 viewBinding.galleryButton.visibility = View.VISIBLE
-                viewBinding.portfolioButton.visibility = View.VISIBLE
                 viewBinding.galleryButton.setImageResource(R.drawable.ic_composition_gallery)
                 viewBinding.filmCounterText.visibility = View.GONE
                 viewBinding.developButton.visibility = View.GONE
                 viewBinding.shutterButton.visibility = View.VISIBLE
                 viewBinding.switchFormatButton.isEnabled = true
                 viewBinding.gridButton.isEnabled = true
-                viewBinding.tutorialButton.visibility = View.VISIBLE
-                viewBinding.tutorialPromptText.visibility = View.GONE
-                // Restore normal grid
-                viewBinding.overlayView.setGridType(gridTypes[currentGridIndex])
+                viewBinding.modeSwitch.visibility = View.VISIBLE
+                viewBinding.portfolioButton.visibility = View.VISIBLE
             }
 
             ShootingMode.FILM -> {
                 viewBinding.modeSwitch.text = "Deliberate Shooting"
                 viewBinding.galleryButton.visibility = View.VISIBLE
-                viewBinding.portfolioButton.visibility = View.VISIBLE
                 viewBinding.galleryButton.setImageResource(R.drawable.ic_gallery)
                 viewBinding.filmCounterText.visibility = View.VISIBLE
                 viewBinding.filmCounterText.text = "$shotsTaken / $rollCapacity"
                 viewBinding.tutorialButton.visibility = View.GONE
-                viewBinding.tutorialPromptText.visibility = View.GONE
+                viewBinding.modeSwitch.visibility = View.VISIBLE
+                viewBinding.portfolioButton.visibility = View.VISIBLE
 
                 val isRollStarted = shotsTaken > 0
                 viewBinding.switchFormatButton.isEnabled = !isRollStarted
@@ -215,22 +236,24 @@ class MainActivity : AppCompatActivity() {
                     viewBinding.shutterButton.visibility = View.VISIBLE
                 }
             }
-
-            ShootingMode.TUTORIAL -> {
-                viewBinding.modeSwitch.text = "Tutorial Mode"
-                viewBinding.modeSwitch.isChecked = false // Ensure switch is in 'practice' state visually
-                viewBinding.galleryButton.visibility = View.GONE
-                viewBinding.portfolioButton.visibility = View.GONE
-                viewBinding.filmCounterText.visibility = View.GONE
-                viewBinding.developButton.visibility = View.GONE
-                viewBinding.shutterButton.visibility = View.VISIBLE
+            ShootingMode.CHALLENGE -> {
+                viewBinding.filmCounterText.visibility = View.VISIBLE
+                viewBinding.filmCounterText.text = "$challengeName Challenge: $shotsTaken / $rollCapacity"
+                // Hide most controls during a challenge to keep the user focused
                 viewBinding.switchFormatButton.isEnabled = false
                 viewBinding.gridButton.isEnabled = false
-                viewBinding.tutorialButton.visibility = View.VISIBLE // Keep it visible to exit
-                viewBinding.tutorialPromptText.visibility = View.VISIBLE
+                viewBinding.modeSwitch.visibility = View.GONE
+                viewBinding.galleryButton.visibility = View.GONE
+                viewBinding.portfolioButton.visibility = View.GONE
+                viewBinding.tutorialButton.visibility = View.GONE
+                viewBinding.developButton.visibility = View.GONE
+                viewBinding.shutterButton.visibility = View.VISIBLE
 
-                // Execute the current lesson's UI setup
-                tutorialLessons[tutorialLessonIndex].invoke()
+                if (shotsTaken >= rollCapacity) {
+                    // Challenge is over
+                    Toast.makeText(this, "$challengeName Challenge Complete!", Toast.LENGTH_LONG).show()
+                    finish() // Exit back to the detail screen
+                }
             }
         }
     }
@@ -240,32 +263,23 @@ class MainActivity : AppCompatActivity() {
 
         cameraProviderFuture.addListener({
             val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+            val preview = Preview.Builder().build().also {
+                it.setSurfaceProvider(viewBinding.cameraPreview.surfaceProvider)
+            }
+            val targetSize =
+                Size(viewBinding.cameraPreview.width, viewBinding.cameraPreview.height)
+            imageCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                .setTargetResolution(targetSize)
+                .build()
 
-            // --- CameraX Extensions ---
-            val extensionsManagerFuture = ExtensionsManager.getInstanceAsync(this, cameraProvider)
-            extensionsManagerFuture.addListener({
-                val extensionsManager = extensionsManagerFuture.get()
-                // --------------------------
-
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(viewBinding.cameraPreview.surfaceProvider)
-                }
-                val targetSize =
-                    Size(viewBinding.cameraPreview.width, viewBinding.cameraPreview.height)
-                imageCapture = ImageCapture.Builder()
-                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-                    .setTargetResolution(targetSize)
-                    .build()
-
-                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-                try {
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
-                } catch (exc: Exception) {
-                    Log.e(TAG, "Use case binding failed", exc)
-                }
-
-            }, ContextCompat.getMainExecutor(this))
+            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            try {
+                cameraProvider.unbindAll()
+                cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
+            } catch (exc: Exception) {
+                Log.e(TAG, "Use case binding failed", exc)
+            }
         }, ContextCompat.getMainExecutor(this))
     }
 
@@ -285,28 +299,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun takePhoto() {
-        if (currentMode == ShootingMode.TUTORIAL) {
-            // In tutorial mode, the shutter button advances the lesson
-            advanceTutorial()
-            return
-        }
-
         val imageCapture = imageCapture ?: return
         triggerHapticFeedback()
-        playShutterSound()
+        // playShutterSound() // Consider removing for less distraction in tutorial
         animateShutterFlash()
 
         val fileName = "photo_${System.currentTimeMillis()}.jpg"
-        val outputFile = if (currentMode == ShootingMode.FILM) {
-            File(getDir("film_roll", Context.MODE_PRIVATE), fileName)
-        } else {
-            val mediaDir = File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-                "FormatApp-Images/Composition"
-            )
-            mediaDir.mkdirs()
-            File(mediaDir, fileName)
+
+        val outputFile = when (currentMode) {
+            ShootingMode.FILM -> File(getDir("film_roll", Context.MODE_PRIVATE), fileName)
+            ShootingMode.CHALLENGE -> {
+                val mediaDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                    "FormatApp-Images/Challenges/$challengeName"
+                )
+                mediaDir.mkdirs()
+                File(mediaDir, fileName)
+            }
+            else -> { // PRACTICE
+                val mediaDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                    "FormatApp-Images/Composition"
+                )
+                mediaDir.mkdirs()
+                File(mediaDir, fileName)
+            }
         }
+
 
         val outputOptions = ImageCapture.OutputFileOptions.Builder(outputFile).build()
 
@@ -315,15 +334,12 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.getMainExecutor(this),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    // 1. Save metadata from the full, uncropped file
                     savePhotoMetadata(outputFile.absolutePath)
 
-                    // 2. Now crop the file
                     val bitmap = BitmapFactory.decodeFile(outputFile.absolutePath)
                     val rotatedBitmap = rotateBitmap(bitmap, outputFile.absolutePath)
                     val croppedBitmap = cropBitmap(rotatedBitmap)
 
-                    // 3. Overwrite the original file with the cropped version
                     try {
                         val out = FileOutputStream(outputFile)
                         croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
@@ -333,25 +349,22 @@ class MainActivity : AppCompatActivity() {
                         Log.e(TAG, "Error overwriting file", e)
                     }
 
-                    // 4. Update UI
-                    if (currentMode == ShootingMode.FILM) {
-                        shotsTaken++
-                        saveState()
-                        updateUiForMode()
-                        Toast.makeText(baseContext, "Shot $shotsTaken taken.", Toast.LENGTH_SHORT).show()
-                    } else {
-                        // For practice mode, notify MediaStore about the new file
-                        val contentValues = ContentValues().apply {
-                            put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
-                            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/FormatApp-Images/Composition")
-                            } else {
-                                put(MediaStore.Images.Media.DATA, outputFile.absolutePath)
-                            }
+                    when (currentMode) {
+                        ShootingMode.FILM -> {
+                            shotsTaken++
+                            saveState()
+                            updateUiForMode()
+                            Toast.makeText(baseContext, "Shot $shotsTaken taken.", Toast.LENGTH_SHORT).show()
                         }
-                        contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-                        Toast.makeText(baseContext, "Practice shot saved.", Toast.LENGTH_SHORT).show()
+                        ShootingMode.PRACTICE -> {
+                            notifyMediaStore(outputFile, "Pictures/FormatApp-Images/Composition")
+                            Toast.makeText(baseContext, "Practice shot saved.", Toast.LENGTH_SHORT).show()
+                        }
+                        ShootingMode.CHALLENGE -> {
+                            shotsTaken++
+                            notifyMediaStore(outputFile, "Pictures/FormatApp-Images/Challenges/$challengeName")
+                            updateUiForMode()
+                        }
                     }
                 }
 
@@ -362,6 +375,18 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun notifyMediaStore(file: File, relativePath: String) {
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, file.name)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, relativePath)
+            } else {
+                put(MediaStore.Images.Media.DATA, file.absolutePath)
+            }
+        }
+        contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+    }
 
     private fun savePhotoMetadata(filePath: String) {
         try {
@@ -372,7 +397,6 @@ class MainActivity : AppCompatActivity() {
             val exif = ExifInterface(filePath)
             val iso = exif.getAttributeInt(ExifInterface.TAG_ISO_SPEED_RATINGS, 0)
 
-            // Correctly parse the shutter speed value
             val shutterSpeedString = exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME)
             val shutterSpeedSeconds = shutterSpeedString?.toFloatOrNull() ?: 0f
             val shutterSpeedNanos = (shutterSpeedSeconds * 1_000_000_000).toLong()
@@ -421,21 +445,12 @@ class MainActivity : AppCompatActivity() {
         viewBinding.shutterFlash.apply {
             alpha = 1f
             visibility = View.VISIBLE
-            translationX = width.toFloat()
-
             animate()
-                .translationX(0f)
-                .setDuration(50)
+                .alpha(0f)
+                .setDuration(300)
                 .setListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
-                        animate()
-                            .translationX(-width.toFloat())
-                            .setDuration(50)
-                            .setListener(object : AnimatorListenerAdapter() {
-                                override fun onAnimationEnd(animation: Animator) {
-                                    visibility = View.GONE
-                                }
-                            })
+                        visibility = View.GONE
                     }
                 })
         }
@@ -510,38 +525,6 @@ class MainActivity : AppCompatActivity() {
         updateUiForMode()
     }
 
-    private fun toggleTutorialMode() {
-        if (currentMode == ShootingMode.TUTORIAL) {
-            // Exit tutorial mode
-            currentMode = ShootingMode.PRACTICE
-            Toast.makeText(this, "Exited Tutorial", Toast.LENGTH_SHORT).show()
-        } else {
-            // Enter tutorial mode
-            currentMode = ShootingMode.TUTORIAL
-            tutorialLessonIndex = 0 // Start from the first lesson
-            Toast.makeText(this, "Tutorial Started: Rule of Thirds", Toast.LENGTH_SHORT).show()
-        }
-        updateUiForMode()
-    }
-
-    private fun advanceTutorial() {
-        tutorialLessonIndex++
-        if (tutorialLessonIndex >= tutorialLessons.size) {
-            // End of tutorial
-            Toast.makeText(this, "Tutorial Complete!", Toast.LENGTH_LONG).show()
-            currentMode = ShootingMode.PRACTICE
-        } else {
-            // Move to the next lesson
-            val nextLessonName = when(tutorialLessonIndex) {
-                1 -> "Centered Composition"
-                2 -> "Headroom"
-                else -> "Next Lesson"
-            }
-            Toast.makeText(this, "Next: $nextLessonName", Toast.LENGTH_SHORT).show()
-        }
-        updateUiForMode()
-    }
-
     private fun saveState() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
@@ -559,24 +542,6 @@ class MainActivity : AppCompatActivity() {
         currentMode = ShootingMode.valueOf(savedMode ?: ShootingMode.PRACTICE.name)
         lastDevelopedRollId = prefs.getString(KEY_LAST_ROLL_ID, null)
         currentRatioIndex = prefs.getInt(KEY_RATIO_INDEX, 0)
-    }
-
-    private fun saveBitmapToInternalStorage(bitmap: Bitmap, name: String): File? {
-        val appSpecificDirectory = getDir("film_roll", Context.MODE_PRIVATE)
-        if (!appSpecificDirectory.exists()) {
-            appSpecificDirectory.mkdirs()
-        }
-        val imageFile = File(appSpecificDirectory, name)
-
-        try {
-            val outputStream: OutputStream = FileOutputStream(imageFile)
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
-            outputStream.close()
-            return imageFile
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to save bitmap to internal storage", e)
-            return null
-        }
     }
 
     private fun rotateBitmap(bitmap: Bitmap, path: String): Bitmap {
@@ -626,16 +591,7 @@ class MainActivity : AppCompatActivity() {
             bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
             outputStream.close()
 
-            val contentValues = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
-                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/FormatApp-Images/$subfolder")
-                } else {
-                    put(MediaStore.Images.Media.DATA, imageFile.absolutePath)
-                }
-            }
-            contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            notifyMediaStore(imageFile, "Pictures/FormatApp-Images/$subfolder")
             return imageFile
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save bitmap", e)
